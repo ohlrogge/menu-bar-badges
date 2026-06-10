@@ -140,19 +140,20 @@ RED = (255, 59, 48, 255)
 BLACK = (0, 0, 0, 255)
 CLAUDE_ORANGE = (217, 119, 87, 255)
 
-# Claude starburst logomark, 11x11 cells drawn at 2x scale
+# Claude Code mascot (simplified pixel critter), 11x11 cells drawn at 2x
+# scale; "." inside the body shows the white badge through (eyes)
 LOGO = [
-    ".....X.....",
-    ".X...X...X.",
-    "..X..X..X..",
-    "...X.X.X...",
-    "....XXX....",
+    ".XXXXXXXXX.",
     "XXXXXXXXXXX",
-    "....XXX....",
-    "...X.X.X...",
-    "..X..X..X..",
-    ".X...X...X.",
-    ".....X.....",
+    "XXXXXXXXXXX",
+    "XX..XXX..XX",
+    "XX..XXX..XX",
+    "XXXXXXXXXXX",
+    "XXXXXXXXXXX",
+    "XXXXXXXXXXX",
+    ".XXXXXXXXX.",
+    "..XX...XX..",
+    "..XX...XX..",
 ]
 
 # 5x7 pixel font, drawn at 2x scale (each cell = 2x2 px)
