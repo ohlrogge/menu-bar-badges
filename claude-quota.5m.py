@@ -81,6 +81,8 @@ def discover_accounts():
     for path in sorted(glob.glob(os.path.expanduser("~/.claude*"))):
         if os.path.isdir(path) and keychain_entry_exists(keychain_service(path)):
             accounts.append((default_label(path), path))
+    if len(accounts) == 1:
+        return [("Claude", accounts[0][1])]
     return accounts
 
 
@@ -135,6 +137,23 @@ ERR_OUTLINE = (255, 159, 10, 255)
 GREEN = (52, 199, 89, 255)
 ORANGE = (255, 159, 10, 255)
 RED = (255, 59, 48, 255)
+BLACK = (0, 0, 0, 255)
+CLAUDE_ORANGE = (217, 119, 87, 255)
+
+# Claude starburst logomark, 11x11 cells drawn at 2x scale
+LOGO = [
+    ".....X.....",
+    ".X...X...X.",
+    "..X..X..X..",
+    "...X.X.X...",
+    "....XXX....",
+    "XXXXXXXXXXX",
+    "....XXX....",
+    "...X.X.X...",
+    "..X..X..X..",
+    ".X...X...X.",
+    ".....X.....",
+]
 
 # 5x7 pixel font, drawn at 2x scale (each cell = 2x2 px)
 GLYPHS = {
@@ -208,7 +227,28 @@ def draw_letter(pixels, x0, y0, ch, color, scale=2):
                           x0 + (c + 1) * scale, y0 + (r + 1) * scale, color)
 
 
-def draw_battery(pixels, x, y, utilization, error, text=None):
+def draw_logo(pixels, x0, y0, scale=2):
+    for r, row in enumerate(LOGO):
+        for c, v in enumerate(row):
+            if v == "X":
+                fill_rect(pixels, x0 + c * scale, y0 + r * scale,
+                          x0 + (c + 1) * scale, y0 + (r + 1) * scale,
+                          CLAUDE_ORANGE)
+
+
+def countdown(iso):
+    """h:mm (or Nd beyond 48h) until the given reset time, or None."""
+    try:
+        left = datetime.fromisoformat(iso) - datetime.now().astimezone()
+        mins = max(0, int(left.total_seconds()) // 60)
+    except (ValueError, TypeError):
+        return None
+    if mins >= 48 * 60:
+        return f"{mins // 1440}D"
+    return f"{mins // 60}:{mins % 60:02d}"
+
+
+def draw_battery(pixels, x, y, utilization, error, text=None, fill_color=None):
     """One battery pill: body 66x24 px + nub, at (x, y)."""
     outline = ERR_OUTLINE if error else OUTLINE
     body_w, body_h, t = 66, 24, 2
@@ -226,7 +266,8 @@ def draw_battery(pixels, x, y, utilization, error, text=None):
     if error or utilization is None:
         return
     # fill, battery-style: color shifts as the window fills up
-    color = RED if utilization >= 90 else ORANGE if utilization >= 70 else GREEN
+    color = fill_color or (
+        RED if utilization >= 90 else ORANGE if utilization >= 70 else GREEN)
     inner_w = body_w - 2 * t - 2
     fill_w = round(inner_w * min(100, max(0, utilization)) / 100)
     if utilization > 0 and fill_w == 0:
@@ -244,28 +285,28 @@ def draw_battery(pixels, x, y, utilization, error, text=None):
 
 
 def menu_bar_image(results):
-    letter_w, gap = 10, 4
+    letter_w, gap, logo_w = 10, 4, 30  # logo: 22 px + 8 px gap
     cell_w = letter_w + gap + 66 + 5  # letter + gap + body + nub
     n = len(results)
-    width, height = n * cell_w + (n - 1) * 12, 32
+    width, height = logo_w + n * cell_w + (n - 1) * 12, 32
     pixels = [[(0, 0, 0, 0)] * width for _ in range(height)]
+    draw_logo(pixels, 0, 5)
     for i, (name, usage, err) in enumerate(results):
-        x = i * (cell_w + 12)
+        x = logo_w + i * (cell_w + 12)
         five = (usage or {}).get("five_hour")
-        text = None
-        if five and five["utilization"] >= 100 and five.get("resets_at"):
-            # quota exhausted: show time until reset instead of "100"
-            try:
-                left = datetime.fromisoformat(five["resets_at"]) \
-                    - datetime.now().astimezone()
-                mins = max(0, int(left.total_seconds()) // 60)
-                text = f"{mins // 60}:{mins % 60:02d}"
-            except (ValueError, TypeError):
-                pass
+        week = (usage or {}).get("seven_day")
+        util = five["utilization"] if five else None
+        text, fill_color = None, None
+        if week and week["utilization"] >= 100:
+            # weekly limit hit: black pill + countdown to the weekly reset
+            util, fill_color = 100, BLACK
+            text = countdown(week.get("resets_at"))
+        elif five and five["utilization"] >= 100:
+            # 5-hour window exhausted: countdown to reset instead of "100"
+            text = countdown(five.get("resets_at"))
         draw_letter(pixels, x, 9, name[0], OUTLINE)
-        draw_battery(pixels, x + letter_w + gap, 4,
-                     utilization=five["utilization"] if five else None,
-                     error=bool(err), text=text)
+        draw_battery(pixels, x + letter_w + gap, 4, utilization=util,
+                     error=bool(err), text=text, fill_color=fill_color)
     return base64.b64encode(encode_png(width, height, pixels)).decode()
 
 
@@ -296,7 +337,7 @@ def color(utilization):
 
 def window_line(label, window):
     u = window["utilization"]
-    return (f"--{label:<7} {meter(u)} {u:.0f}%  "
+    return (f"{label:<7} {meter(u)} {u:>3.0f}%  "
             f"{reset_str(window.get('resets_at'))}{color(u)} | font=Menlo")
 
 
@@ -329,18 +370,13 @@ def main():
                          else f"{name[0]} ⚠")
         print(f"◔ {' · '.join(parts)}")
 
-    print("---")
     for name, usage, err in results:
+        print("---")
         if err:
             print(f"{name}: ⚠ {err} | color=orange")
             continue
         five, week = usage.get("five_hour"), usage.get("seven_day")
-        summary = []
-        if five:
-            summary.append(f"5h {five['utilization']:.0f}%")
-        if week:
-            summary.append(f"wk {week['utilization']:.0f}%")
-        print(f"{name} — {' · '.join(summary) or 'no quota data'}")
+        print(f"{name}")
         if five:
             print(window_line("5-hour", five))
         if week:
@@ -351,7 +387,7 @@ def main():
         extra = usage.get("extra_usage") or {}
         if extra.get("is_enabled") and extra.get("used_credits"):
             # API reports credits in cents
-            print(f"--extra   {extra['used_credits'] / 100:.2f} / "
+            print(f"extra   {extra['used_credits'] / 100:.2f} / "
                   f"{extra['monthly_limit'] / 100:.0f} "
                   f"{extra.get('currency', '')} | font=Menlo")
     print("---")

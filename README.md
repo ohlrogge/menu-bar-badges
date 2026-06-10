@@ -9,11 +9,14 @@ account, like this:
 
 - Each pill shows the **5-hour-window utilization** for one account, colored
   green / orange (≥70%) / red (≥90%).
-- When a window is fully used, the pill shows a **countdown until reset**
-  (`4:28`) instead of the percentage.
-- The dropdown shows full detail per account: 5-hour and weekly windows,
-  per-model windows where your plan reports them, extra-usage credits, and
-  reset times.
+- When the 5-hour window is fully used, the pill shows a **countdown until
+  reset** (`4:28`) instead of the percentage.
+- When the **weekly limit** is hit, the pill turns **black** with a countdown
+  to the weekly reset (`2D`) — that's the harder cap, whatever the 5-hour
+  window says.
+- The dropdown lists full detail for every account inline: 5-hour and weekly
+  windows, per-model windows where your plan reports them, extra-usage
+  credits, and reset times.
 - Refreshes every 5 minutes (SwiftBar filename convention) plus a manual
   "Refresh now" entry.
 
@@ -46,7 +49,8 @@ run that `claude` CLI once and the widget recovers on the next cycle.
 
 By default the plugin auto-discovers accounts: every `~/.claude` /
 `~/.claude-*` config directory that has a Claude Code Keychain entry gets a
-pill, labeled by the directory suffix (`~/.claude-work` → `W`).
+pill, labeled by the directory suffix (`~/.claude-work` → `W`). A single
+auto-discovered account is simply labeled `C` (for Claude).
 
 To pin or rename accounts (e.g. you use multiple `CLAUDE_CONFIG_DIR`s), create
 `~/.config/claude-quota/accounts` with one `path [label]` per line:
