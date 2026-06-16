@@ -9,7 +9,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"math"
 	"strings"
 	"time"
 )
@@ -25,25 +24,10 @@ var (
 	colorTransparent = color.NRGBA{R: 0, G: 0, B: 0, A: 0}
 )
 
-// 11×11 cell Claude mascot; '.' = transparent, 'X' = foreground colour.
-// Drawn at 2× scale inside a 34×32 px cell (26 px content + 8 px right gap).
-var logo = []string{
-	".XXXXXXXXX.",
-	"XXXXXXXXXXX",
-	"XXXXXXXXXXX",
-	"XX..XXX..XX",
-	"XX..XXX..XX",
-	"XXXXXXXXXXX",
-	"XXXXXXXXXXX",
-	"XXXXXXXXXXX",
-	".XXXXXXXXX.",
-	"..XX...XX..",
-	"..XX...XX..",
-}
-
 // 5×7 pixel font; each entry is 7 rows of 5 columns ('X' = on, any other = off).
 var glyphs = map[string][]string{
 	"!": {"..X..", "..X..", "..X..", "..X..", "..X..", ".....", "..X.."},
+	"*": {"..X..", "X.X.X", ".XXX.", "..X..", ".XXX.", "X.X.X", "..X.."},
 	"A": {".XXX.", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"},
 	"B": {"XXXX.", "X...X", "X...X", "XXXX.", "X...X", "X...X", "XXXX."},
 	"C": {".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX."},
@@ -130,19 +114,6 @@ func drawLetter(img *image.NRGBA, x0, y0 int, ch rune, c color.NRGBA, scale int)
 	}
 }
 
-func drawLogo(img *image.NRGBA, x0, y0 int, fg color.NRGBA) {
-	const scale = 2
-	for r, row := range logo {
-		for col, v := range row {
-			if v == 'X' {
-				fillRect(img,
-					x0+2+col*scale, y0+2+r*scale,
-					x0+2+(col+1)*scale, y0+2+(r+1)*scale, fg)
-			}
-		}
-	}
-}
-
 // countdown returns a short time-remaining string (e.g. "2:15" or "3D").
 func countdown(iso string) string {
 	if iso == "" {
@@ -170,100 +141,84 @@ type BarResult struct {
 	HasErr bool
 }
 
-// Gauge geometry (all measurements in pixels at 2× retina scale).
+// Badge geometry (all measurements in pixels at 2× retina scale).
 const (
-	gaugeW      = 54 // rounded rect body width
-	gaugeH      = 24 // rounded rect body height
-	gaugeROut   = 5  // outer corner radius
-	gaugeRIn    = 3  // inner hole corner radius
-	gaugeStroke = 2  // outline thickness
+	badgeW    = 52 // fixed badge width
+	gaugeH    = 28 // badge height (retained name; used in menuBarImage)
+	badgeR    = 5  // corner radius
+	starZoneW = 18 // left zone reserved for the * glyph
+	numZoneW  = 34 // right zone for the number / countdown
 )
 
-// drawGauge renders a rounded status bar gauge at (x, y).
+// drawBadge renders a solid rounded badge at (x, y).
 //
-// Frame is always white (or orange on error); fill is green/yellow/orange/red;
-// percentage or countdown is shown in white inside the body.
-// fillC overrides the automatic fill colour (used for the weekly-lockout black fill).
-func drawGauge(img *image.NRGBA, x, y int, utilization *float64, hasErr bool, text string, fillC *color.NRGBA) {
-	outline := colorWhite
+// The badge is divided into two fixed zones: the left zone always shows *
+// (the Claude icon shorthand) and the right zone shows the utilization number
+// or countdown. On error, ! replaces the number; * stays in place.
+// fillC overrides the automatic background colour (used for the weekly-lockout black fill).
+func drawBadge(img *image.NRGBA, x, y int, utilization *float64, hasErr bool, text string, fillC *color.NRGBA) {
+	// Resolve background colour.
+	var bg color.NRGBA
 	if hasErr {
-		outline = colorErrOutline
-	}
-
-	// 1. Solid outer shell.
-	drawFilledRoundedRect(img, x, y, x+gaugeW, y+gaugeH, gaugeROut, outline)
-	// 2. Punch out the interior to create the hollow outline.
-	drawFilledRoundedRect(img, x+gaugeStroke, y+gaugeStroke,
-		x+gaugeW-gaugeStroke, y+gaugeH-gaugeStroke, gaugeRIn, colorTransparent)
-
-	if hasErr {
-		// Draw "!" centred to signal the error state.
-		drawLetter(img, x+(gaugeW-10)/2, y+(gaugeH-14)/2, '!', colorWhite, 2)
-		return
-	}
-	if utilization == nil {
-		return
-	}
-
-	u := *utilization
-
-	// Resolve fill colour.
-	fc := fillC
-	if fc == nil {
-		var c color.NRGBA
+		bg = colorErrOutline
+	} else if fillC != nil {
+		bg = *fillC
+	} else if utilization != nil {
+		u := *utilization
 		switch {
 		case u >= 90:
-			c = colorRed
+			bg = colorRed
 		case u >= 75:
-			c = colorOrange
+			bg = colorOrange
 		case u >= 60:
-			c = colorYellow
+			bg = colorYellow
 		default:
-			c = colorGreen
+			bg = colorGreen
 		}
-		fc = &c
+	} else {
+		bg = colorGreen
 	}
 
-	// Fill from the left inner edge, proportional to utilisation.
-	// Inner area width = gaugeW - 2*gaugeStroke = 50 px.
-	// Extra 1 px inset keeps the fill from touching the outline.
-	const fillMaxW = gaugeW - 2*gaugeStroke - 2 // 48 px
-	fw := int(math.Round(float64(fillMaxW) * math.Min(100, math.Max(0, u)) / 100))
-	if u > 0 && fw == 0 {
-		fw = 1
-	}
-	if fw > 0 {
-		fillRect(img,
-			x+gaugeStroke+1, y+gaugeStroke+1,
-			x+gaugeStroke+1+fw, y+gaugeH-gaugeStroke-1,
-			*fc)
-	}
+	// 1. Solid filled badge.
+	drawFilledRoundedRect(img, x, y, x+badgeW, y+gaugeH, badgeR, bg)
 
-	// Percentage or countdown text, centred in the gauge.
-	displayText := text
-	if displayText == "" {
-		displayText = fmt.Sprintf("%.0f", u)
+	glyphY := y + (gaugeH-14)/2
+
+	// 2. * always at fixed position, centred in the left zone.
+	starX := x + (starZoneW-10)/2
+	drawLetter(img, starX, glyphY, '*', colorWhite, 2)
+
+	// 3. Number or ! centred in the right zone.
+	var numStr string
+	if hasErr {
+		numStr = "!"
+	} else if utilization == nil {
+		return
+	} else {
+		numStr = text
+		if numStr == "" {
+			numStr = fmt.Sprintf("%.0f", *utilization)
+		}
 	}
-	runes := []rune(displayText)
-	textW := len(runes)*10 + max(0, len(runes)-1)*2
-	tx := x + (gaugeW-textW)/2
-	ty := y + (gaugeH-14)/2
+	runes := []rune(numStr)
+	numTextW := len(runes)*10 + max(0, len(runes)-1)*2
+	tx := x + starZoneW + (numZoneW-numTextW)/2
 	for _, ch := range runes {
-		drawLetter(img, tx, ty, ch, colorWhite, 2)
+		drawLetter(img, tx, glyphY, ch, colorWhite, 2)
 		tx += 12
 	}
 }
 
-// menuBarImage renders all visible gauges as a retina-ready base64 PNG.
-// The logo and all frames are always white; fill colours are system green/yellow/orange/red.
+// menuBarImage renders all visible badges as a retina-ready base64 PNG.
+// Each badge is a solid coloured rounded rect with * on the left and the
+// utilization percentage (or countdown) on the right.
 func menuBarImage(results []BarResult, showLetters bool) (string, error) {
 	const (
 		letterW = 10
 		gap     = 4
-		logoW   = 34
 		cellGap = 8
 		height  = 32
-		gaugeY  = (height - gaugeH) / 2 // centres the 24 px gauge in the 32 px canvas
+		gaugeY  = (height - gaugeH) / 2 // centres the 24 px badge in the 32 px canvas
 	)
 
 	n := len(results)
@@ -271,18 +226,17 @@ func menuBarImage(results []BarResult, showLetters bool) (string, error) {
 	if showLetters {
 		labelW = letterW + gap
 	}
-	cellW := labelW + gaugeW
+	cellW := labelW + badgeW
 
-	width := logoW
+	width := 0
 	if n > 0 {
-		width = logoW + n*cellW + (n-1)*cellGap
+		width = n*cellW + (n-1)*cellGap
 	}
 
 	img := image.NewNRGBA(image.Rect(0, 0, width, height))
-	drawLogo(img, 0, 3, colorWhite)
 
 	for i, r := range results {
-		x := logoW + i*(cellW+cellGap)
+		x := i * (cellW + cellGap)
 
 		var util *float64
 		var text string
@@ -316,7 +270,7 @@ func menuBarImage(results []BarResult, showLetters bool) (string, error) {
 				drawLetter(img, x, (height-14)/2, runes[0], colorWhite, 2)
 			}
 		}
-		drawGauge(img, x+labelW, gaugeY, util, r.HasErr, text, fillC)
+		drawBadge(img, x+labelW, gaugeY, util, r.HasErr, text, fillC)
 	}
 
 	var buf bytes.Buffer
