@@ -141,9 +141,14 @@ type keychainCreds struct {
 	} `json:"claudeAiOauth"`
 }
 
-// getToken reads the OAuth access token from the macOS Keychain.
-// Uses /usr/bin/security directly (no PATH lookup) to avoid binary substitution.
-func getToken(configDir string) (string, error) {
+// renewBefore is how far ahead of expiry we proactively renew. It is at least
+// the SwiftBar refresh interval (5m) so a token never expires between runs.
+const renewBefore = 10 * time.Minute
+
+// readKeychainToken reads the OAuth access token and its expiry from the macOS
+// Keychain. Uses /usr/bin/security directly (no PATH lookup) to avoid binary
+// substitution.
+func readKeychainToken(configDir string) (token string, expiresAt float64, err error) {
 	service := keychainService(configDir)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -151,17 +156,58 @@ func getToken(configDir string) (string, error) {
 		"find-generic-password", "-s", service, "-w")
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("no keychain entry — log in with that CLI once")
+		return "", 0, fmt.Errorf("no keychain entry — log in with that CLI once")
 	}
 	var creds keychainCreds
 	if err := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &creds); err != nil {
-		return "", fmt.Errorf("unexpected credential format")
+		return "", 0, fmt.Errorf("unexpected credential format")
 	}
 	oa := creds.ClaudeAiOauth
-	if oa.ExpiresAt > 0 && float64(time.Now().UnixMilli()) > oa.ExpiresAt {
+	return oa.AccessToken, oa.ExpiresAt, nil
+}
+
+// renewToken runs Claude Code in non-interactive print mode, which refreshes
+// the OAuth credentials in the Keychain using the stored refresh token. It is
+// best-effort: a dead/missing refresh token just makes claude exit non-zero.
+// Runs through a login shell so it picks up the PATH where claude lives,
+// matching the Terminal fallback menu item.
+func renewToken(configDir string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/bash", "-l", "-c", `claude -p "" 2>/dev/null`)
+	cmd.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+configDir)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	_ = cmd.Run() // best-effort; caller re-reads the keychain to check success
+}
+
+// getToken returns a non-expired OAuth access token for configDir. When the
+// token is missing or near expiry it renews silently in the background (via
+// renewToken) and re-reads the keychain before giving up, so the Terminal
+// fallback is only needed when the refresh token itself is dead.
+func getToken(configDir string) (string, error) {
+	token, expiresAt, err := readKeychainToken(configDir)
+	if err != nil {
+		// No keychain entry (or unreadable): renewal cannot help — a
+		// never-logged-in account needs the interactive CLI.
+		return "", err
+	}
+
+	stale := expiresAt > 0 && float64(time.Now().Add(renewBefore).UnixMilli()) > expiresAt
+	if !stale {
+		return token, nil
+	}
+
+	// Expired or about to expire but a keychain entry exists: try a silent renewal.
+	renewToken(configDir)
+	token, expiresAt, err = readKeychainToken(configDir)
+	if err != nil {
+		return "", err
+	}
+	if expiresAt > 0 && float64(time.Now().UnixMilli()) > expiresAt {
 		return "", fmt.Errorf("token stale — run that CLI once to refresh")
 	}
-	return oa.AccessToken, nil
+	return token, nil
 }
 
 // ---- hidden-accounts list ----

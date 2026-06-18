@@ -93,6 +93,16 @@ func main() {
 		} else {
 			var fetchErr error
 			usage, fetchErr = fetchUsageCached(acc.ConfigDir, token)
+			if fetchErr != nil && isAuthError(fetchErr.Error()) {
+				// The keychain looked fine but the server rejected the token.
+				// Renew once in the background and retry before giving up.
+				renewToken(acc.ConfigDir)
+				if token, tokenErr = getToken(acc.ConfigDir); tokenErr == nil {
+					usage, fetchErr = fetchUsageCached(acc.ConfigDir, token)
+				} else {
+					fetchErr = tokenErr
+				}
+			}
 			if fetchErr != nil {
 				errMsg = fetchErr.Error()
 			}
@@ -154,9 +164,9 @@ func main() {
 			fmt.Printf("%s: ⚠ %s\n", r.label, r.err)
 			fmt.Println(toggleLine(r.label))
 			if isAuthError(r.err) {
-				// Offer a one-click fix: open Terminal and run the claude CLI so
-				// the user can re-authenticate without leaving the menu bar.
-				fmt.Println("--Re-authenticate: run 'claude' in Terminal | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
+				// Background renewal already failed (dead refresh token), so offer
+				// a one-click fix: open Terminal and run the claude CLI to log in.
+				fmt.Println("--Re-authenticate (auto-renew failed): run 'claude' in Terminal | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
 			}
 			continue
 		}
