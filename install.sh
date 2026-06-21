@@ -32,13 +32,13 @@ if [ -n "${PLUGINS:-}" ]; then
 fi
 
 if [ "$INSTALL_CLAUDE" = false ] && [ "$INSTALL_GH" = false ]; then
-    if [ -t 0 ]; then
+    if [ -e /dev/tty ]; then
         echo "Which plugins do you want to install?"
         echo "  1) claude-quota  — Claude Code usage gauges"
         echo "  2) pr-review     — GitHub PRs awaiting your review"
         echo "  3) both (default)"
         printf "Choice [3]: "
-        read -r choice
+        read -r choice </dev/tty
         case "$choice" in
             1) INSTALL_CLAUDE=true ;;
             2) INSTALL_GH=true ;;
@@ -56,9 +56,9 @@ fi
 # one-liner stays turnkey.
 confirm() {
     local reply
-    if [ -t 0 ]; then
+    if [ -e /dev/tty ]; then
         printf "%s [Y/n] " "$1"
-        read -r reply
+        read -r reply </dev/tty
         case "$reply" in [Nn]*) return 1 ;; esac
     fi
     return 0
