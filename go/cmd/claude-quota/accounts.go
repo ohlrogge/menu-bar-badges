@@ -166,15 +166,39 @@ func readKeychainToken(configDir string) (token string, expiresAt float64, err e
 	return oa.AccessToken, oa.ExpiresAt, nil
 }
 
+// claudeCandidates are checked in order when looking for the claude binary.
+// Avoids launching a login shell (which triggers macOS TCC privacy prompts for
+// every directory the shell touches on startup).
+var claudeCandidates = []string{
+	"~/.claude/local/claude",  // official Claude Code installer
+	"/opt/homebrew/bin/claude", // Homebrew on Apple Silicon
+	"/usr/local/bin/claude",   // Homebrew on Intel / manual installs
+	"/usr/bin/claude",
+}
+
+// findClaude returns the path to the claude binary, or "" if not found.
+func findClaude() string {
+	for _, p := range claudeCandidates {
+		resolved := expandUser(p)
+		if info, err := os.Stat(resolved); err == nil && !info.IsDir() {
+			return resolved
+		}
+	}
+	return ""
+}
+
 // renewToken runs Claude Code in non-interactive print mode, which refreshes
 // the OAuth credentials in the Keychain using the stored refresh token. It is
 // best-effort: a dead/missing refresh token just makes claude exit non-zero.
-// Runs through a login shell so it picks up the PATH where claude lives,
-// matching the Terminal fallback menu item.
+// Execs the binary directly (no login shell) to avoid macOS TCC privacy prompts.
 func renewToken(configDir string) {
+	claudePath := findClaude()
+	if claudePath == "" {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/bin/bash", "-l", "-c", `claude -p "" 2>/dev/null`)
+	cmd := exec.CommandContext(ctx, claudePath, "-p", "")
 	cmd.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+configDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
