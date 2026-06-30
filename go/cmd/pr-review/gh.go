@@ -40,6 +40,33 @@ type Data struct {
 	Mine            []PR `json:"mine"`
 }
 
+// configuredUser returns the GitHub login from ~/.config/pr-review/user, or ""
+// if the file doesn't exist. This is an opt-in override for users with multiple
+// gh accounts who want to pin the plugin to a specific one.
+func configuredUser() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".config", "pr-review", "user"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+// tokenForUser returns the gh auth token for the given login via
+// `gh auth token --user <login>`. Returns "" on any error.
+func tokenForUser(gh, login string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, gh, "auth", "token", "--user", login).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // ghPath resolves the gh binary. SwiftBar execs us without a login shell's
 // PATH, so fall back to common install locations (Homebrew, Nix profile,
 // Go/Cargo bins) after LookPath.
@@ -120,10 +147,21 @@ func fetchGitHub() (*Data, error) {
 		return nil, err
 	}
 
+	query := graphqlQuery
+	me := configuredUser()
+	if me != "" {
+		query = strings.ReplaceAll(query, "@me", me)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, gh, "api", "graphql", "-f", "query="+graphqlQuery)
+	cmd := exec.CommandContext(ctx, gh, "api", "graphql", "-f", "query="+query)
+	if me != "" {
+		if tok := tokenForUser(gh, me); tok != "" {
+			cmd.Env = append(os.Environ(), "GH_TOKEN="+tok)
+		}
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -148,7 +186,9 @@ func fetchGitHub() (*Data, error) {
 		return nil, fmt.Errorf("unexpected gh response")
 	}
 
-	me := currentLogin(gh)
+	if me == "" {
+		me = currentLogin(gh)
+	}
 	data := &Data{
 		ReviewRequested: filterOutAuthor(resp.Data.ReviewRequested.Nodes, me),
 		Mine:            resp.Data.Mine.Nodes,

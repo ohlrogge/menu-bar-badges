@@ -98,6 +98,28 @@ if [ "$INSTALL_GH" = true ]; then
     if ! gh auth status >/dev/null 2>&1; then
         echo "Note: you are not signed in to GitHub. Run 'gh auth login' once so the"
         echo "pr-review plugin can fetch your PRs."
+    elif [ -e /dev/tty ]; then
+        # If multiple accounts are logged in, ask which one to pin.
+        gh_users=$(gh auth status 2>&1 | grep -oE 'account [a-zA-Z0-9._-]+' | awk '{print $2}' | sort -u)
+        user_count=$(printf '%s\n' "$gh_users" | grep -c . 2>/dev/null || echo 0)
+        config_file="$HOME/.config/pr-review/user"
+        if [ "$user_count" -gt 1 ] && [ ! -f "$config_file" ]; then
+            echo ""
+            echo "Multiple GitHub accounts detected. Which one should pr-review use?"
+            i=1
+            while IFS= read -r u; do
+                echo "  $i) $u"
+                i=$((i + 1))
+            done <<< "$gh_users"
+            printf "Choice [1]: "
+            read -r choice </dev/tty
+            selected=$(printf '%s\n' "$gh_users" | sed -n "${choice:-1}p")
+            if [ -n "$selected" ]; then
+                mkdir -p "$(dirname "$config_file")"
+                printf '%s\n' "$selected" > "$config_file"
+                echo "Pinned pr-review to GitHub account: $selected"
+            fi
+        fi
     fi
 fi
 
