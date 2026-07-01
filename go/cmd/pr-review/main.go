@@ -62,6 +62,9 @@ func main() {
 		case errors.Is(err, errNoAuth):
 			fmt.Println("Not signed in to GitHub")
 			fmt.Println("Run 'gh auth login' in Terminal | bash=/bin/bash param1=-l param2=-c param3=\"gh auth login\" terminal=true")
+		case errors.Is(err, errPinnedUser):
+			fmt.Println("Pinned GitHub account is not available")
+			fmt.Printf("Check ~/.config/pr-review/user or run 'gh auth login' for %s\n", configuredUser())
 		default:
 			fmt.Printf("⚠ %s\n", err)
 		}

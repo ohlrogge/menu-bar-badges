@@ -113,7 +113,16 @@ if [ "$INSTALL_GH" = true ]; then
             done <<< "$gh_users"
             printf "Choice [1]: "
             read -r choice </dev/tty
-            selected=$(printf '%s\n' "$gh_users" | sed -n "${choice:-1}p")
+            choice="${choice:-1}"
+            # Guard against non-numeric / out-of-range input: sed with a bad
+            # address would fail and, under `set -e`, abort the whole install.
+            selected=""
+            if printf '%s' "$choice" | grep -qE '^[0-9]+$' && [ "$choice" -ge 1 ] && [ "$choice" -lt "$i" ]; then
+                selected=$(printf '%s\n' "$gh_users" | sed -n "${choice}p")
+            fi
+            if [ -z "$selected" ]; then
+                echo "No valid choice made; skipping account pinning (edit ~/.config/pr-review/user later)."
+            fi
             if [ -n "$selected" ]; then
                 mkdir -p "$(dirname "$config_file")"
                 printf '%s\n' "$selected" > "$config_file"

@@ -15,8 +15,9 @@ import (
 
 // errNoGh and errNoAuth let main.go render the right one-time-setup hint.
 var (
-	errNoGh   = errors.New("gh CLI not found")
-	errNoAuth = errors.New("gh not authenticated")
+	errNoGh       = errors.New("gh CLI not found")
+	errNoAuth     = errors.New("gh not authenticated")
+	errPinnedUser = errors.New("pinned account token unavailable")
 )
 
 // PR is one pull request from a GitHub search result.
@@ -163,9 +164,14 @@ func fetchGitHub() (*Data, error) {
 	cmd := exec.CommandContext(ctx, gh, "api", "graphql", "-f", "query="+query)
 	cmd.Dir = os.TempDir()
 	if me != "" {
-		if tok := tokenForUser(gh, me); tok != "" {
-			cmd.Env = append(os.Environ(), "GH_TOKEN="+tok)
+		// A pinned account must authenticate as itself. If its token can't be
+		// resolved, refuse rather than silently querying as the active account —
+		// that would return the wrong (private-repo) results with no indication.
+		tok := tokenForUser(gh, me)
+		if tok == "" {
+			return nil, errPinnedUser
 		}
+		cmd.Env = append(os.Environ(), "GH_TOKEN="+tok)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -251,7 +257,7 @@ func fetchGitHubCached() (*Data, error) {
 
 	data, err := fetchGitHub()
 	if err != nil {
-		if errors.Is(err, errNoGh) || errors.Is(err, errNoAuth) {
+		if errors.Is(err, errNoGh) || errors.Is(err, errNoAuth) || errors.Is(err, errPinnedUser) {
 			return nil, err
 		}
 		if cached.Data != nil {
