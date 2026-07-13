@@ -26,7 +26,7 @@ PLUGIN_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || tru
 echo "Checking for installed plugins in $PLUGIN_DIR..."
 echo
 
-for pkg in "claude-quota" "pr-review"; do
+for pkg in "claude-quota" "pr-review" "rds-load"; do
     found=()
     for f in "$PLUGIN_DIR/$pkg".*.cgo; do
         [ -e "$f" ] && found+=("$f")
@@ -65,6 +65,20 @@ if [ -d "$HOME/.cache/claude-quota" ]; then
     fi
 fi
 
+if [ -d "$HOME/.config/rds-load" ]; then
+    if confirm "Remove rds-load config (~/.config/rds-load/)?"; then
+        rm -rf "$HOME/.config/rds-load"
+        echo "Removed rds-load config."
+    fi
+fi
+
+if [ -d "$HOME/.cache/rds-load" ]; then
+    if confirm "Remove rds-load cache (~/.cache/rds-load/)?"; then
+        rm -rf "$HOME/.cache/rds-load"
+        echo "Removed rds-load cache."
+    fi
+fi
+
 # ---- SwiftBar login item ----------------------------------------------------
 echo
 
@@ -82,6 +96,12 @@ if command -v brew >/dev/null 2>&1; then
     if command -v gh >/dev/null 2>&1 && brew list gh >/dev/null 2>&1; then
         if confirm "Uninstall GitHub CLI (gh) via Homebrew?"; then
             brew uninstall gh
+        fi
+    fi
+
+    if command -v aws >/dev/null 2>&1 && brew list awscli >/dev/null 2>&1; then
+        if confirm "Uninstall AWS CLI via Homebrew?"; then
+            brew uninstall awscli
         fi
     fi
 

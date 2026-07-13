@@ -4,9 +4,10 @@
 # Plugins:
 #   claude-quota  — Claude Code usage gauges in the menu bar
 #   pr-review     — GitHub PRs awaiting your review (needs the gh CLI)
+#   rds-load      — Amazon RDS DB Load per instance (needs the aws CLI)
 #
 # Choose what to install interactively, or non-interactively with either
-# flags (--claude / --gh / --all) or the PLUGINS env var (e.g. PLUGINS=claude,gh).
+# flags (--claude / --gh / --rds / --all) or the PLUGINS env var (e.g. PLUGINS=claude,gh).
 set -euo pipefail
 
 if [ "$(uname)" != "Darwin" ]; then
@@ -17,36 +18,41 @@ fi
 # ---- choose plugins -------------------------------------------------------
 INSTALL_CLAUDE=false
 INSTALL_GH=false
+INSTALL_RDS=false
 
 for arg in "$@"; do
     case "$arg" in
         --claude) INSTALL_CLAUDE=true ;;
         --gh|--pr|--pr-review) INSTALL_GH=true ;;
-        --all|--both) INSTALL_CLAUDE=true; INSTALL_GH=true ;;
+        --rds|--aws) INSTALL_RDS=true ;;
+        --all|--both) INSTALL_CLAUDE=true; INSTALL_GH=true; INSTALL_RDS=true ;;
     esac
 done
 
 if [ -n "${PLUGINS:-}" ]; then
     case ",$PLUGINS," in *,claude,*|*,claude-quota,*) INSTALL_CLAUDE=true ;; esac
     case ",$PLUGINS," in *,gh,*|*,pr,*|*,pr-review,*)  INSTALL_GH=true ;; esac
+    case ",$PLUGINS," in *,rds,*|*,aws,*|*,rds-load,*) INSTALL_RDS=true ;; esac
 fi
 
-if [ "$INSTALL_CLAUDE" = false ] && [ "$INSTALL_GH" = false ]; then
+if [ "$INSTALL_CLAUDE" = false ] && [ "$INSTALL_GH" = false ] && [ "$INSTALL_RDS" = false ]; then
     if [ -e /dev/tty ]; then
         echo "Which plugins do you want to install?"
         echo "  1) claude-quota  — Claude Code usage gauges"
         echo "  2) pr-review     — GitHub PRs awaiting your review"
-        echo "  3) both (default)"
-        printf "Choice [3]: "
+        echo "  3) rds-load      — Amazon RDS DB Load"
+        echo "  4) all (default)"
+        printf "Choice [4]: "
         read -r choice </dev/tty
         case "$choice" in
             1) INSTALL_CLAUDE=true ;;
             2) INSTALL_GH=true ;;
-            *) INSTALL_CLAUDE=true; INSTALL_GH=true ;;
+            3) INSTALL_RDS=true ;;
+            *) INSTALL_CLAUDE=true; INSTALL_GH=true; INSTALL_RDS=true ;;
         esac
     else
-        echo "No selection given; installing both (use PLUGINS=claude or PLUGINS=gh to choose)."
-        INSTALL_CLAUDE=true; INSTALL_GH=true
+        echo "No selection given; installing all (use PLUGINS=claude, PLUGINS=gh, or PLUGINS=rds to choose)."
+        INSTALL_CLAUDE=true; INSTALL_GH=true; INSTALL_RDS=true
     fi
 fi
 
@@ -132,6 +138,16 @@ if [ "$INSTALL_GH" = true ]; then
     fi
 fi
 
+if [ "$INSTALL_RDS" = true ]; then
+    if ! command -v aws >/dev/null 2>&1; then
+        offer_brew_install "AWS CLI" install awscli || exit 1
+    fi
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+        echo "Note: you are not signed in to AWS. The rds-load plugin will show a"
+        echo "'Run aws sso login' prompt in its dropdown until you do."
+    fi
+fi
+
 PLUGIN_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
 if [ -z "$PLUGIN_DIR" ]; then
     PLUGIN_DIR="$HOME/.swiftbar"
@@ -163,10 +179,14 @@ fi
 # ---- build ----------------------------------------------------------------
 # Tell SwiftBar to exec the binary directly instead of wrapping it in
 # "bash -l -c", which adds an unnecessary shell process on every refresh.
-RUN_IN_BASH=$(printf '<swiftbar.runInBash>false</swiftbar.runInBash>' | base64)
+RUN_IN_BASH_TAG='<swiftbar.runInBash>false</swiftbar.runInBash>'
 
+# build_plugin <pkg> <out> [extra swiftbar metadata tags…]: builds ./cmd/<pkg>
+# into $PLUGIN_DIR/<out> and writes SwiftBar's binary-plugin metadata xattr
+# (base64-encoded metadata tags — the only way to configure binary plugins,
+# since they have no source comments SwiftBar can scan for <swiftbar.*> tags).
 build_plugin() {
-    local pkg="$1" out="$2"
+    local pkg="$1" out="$2" extra_meta="${3:-}"
     local binary="$PLUGIN_DIR/$out"
     # Remove stale binaries for this plugin (e.g. a previous refresh interval)
     # so SwiftBar doesn't run both the old and new file as duplicate badges.
@@ -175,7 +195,7 @@ build_plugin() {
     done
     (cd "$BUILD_DIR" && go build -o "$binary" "./cmd/$pkg")
     chmod +x "$binary"
-    xattr -w "com.ameba.SwiftBar" "$RUN_IN_BASH" "$binary" 2>/dev/null || true
+    xattr -w "com.ameba.SwiftBar" "$(printf '%s%s' "$RUN_IN_BASH_TAG" "$extra_meta" | base64)" "$binary" 2>/dev/null || true
     echo "Installed $binary"
 }
 
@@ -184,6 +204,15 @@ if [ "$INSTALL_CLAUDE" = true ]; then
 fi
 if [ "$INSTALL_GH" = true ]; then
     build_plugin pr-review "pr-review.1m.cgo"
+fi
+if [ "$INSTALL_RDS" = true ]; then
+    # Window/refresh interval are configured from the plugin's own dropdown
+    # (Window/Refresh submenus), which persist to ~/.config/rds-load/settings.
+    # Deliberately no <swiftbar.environment> tag here: SwiftBar injects that
+    # tag's declared value into every invocation unconditionally (see
+    # Plugin.swift's `env` property), which would silently overwrite every
+    # dropdown click with the install-time default on the very next refresh.
+    build_plugin rds-load "rds-load.1m.cgo"
 fi
 
 open -a SwiftBar

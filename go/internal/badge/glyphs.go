@@ -70,4 +70,7 @@ var Glyphs = map[string][]string{
 	// peeling off diagonally — the pull-request mental model.
 	// The gap between trunk and branch reads as "not yet merged" — i.e. open.
 	"BRANCH": {"X....", "X....", "X.X..", "X..X.", "X...X", "X...X", "X...X"},
+	// "DB": a stacked-cylinder database/storage icon — the classic top
+	// ellipse, two divider rings, and bottom ellipse — for rds-load.
+	"DB": {".XXX.", "X...X", "XXXXX", "X...X", "XXXXX", "X...X", ".XXX."},
 }
