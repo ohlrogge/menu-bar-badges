@@ -142,7 +142,11 @@ func main() {
 			fmt.Println("Install: brew install awscli | href=https://aws.amazon.com/cli/")
 		case errors.Is(err, errNoAuth):
 			fmt.Println("Not signed in to AWS")
-			fmt.Println("Run 'aws sso login' in Terminal | bash=/bin/bash param1=-l param2=-c param3=\"aws sso login\" terminal=true")
+			// SwiftBar rejoins bash/paramN with plain spaces when launching Terminal
+			// (terminal=true), stripping quotes without re-adding them, so a quoted
+			// multi-word param3 falls apart into separate argv/positional-params by
+			// the time bash -l -c sees it. Escaping the spaces survives that rejoin.
+			fmt.Println(`Run 'aws sso login' in Terminal | bash=/bin/bash param1=-l param2=-c param3=aws\ sso\ login terminal=true`)
 		default:
 			fmt.Printf("⚠ %s\n", err)
 		}
