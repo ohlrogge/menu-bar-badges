@@ -93,7 +93,7 @@ func configLines() []string {
 	if err != nil {
 		script = os.Args[0]
 	}
-	lines := []string{"---", "Settings (Changes apply after the next refresh) | font=Menlo"}
+	lines := []string{"---", "Settings (Changes apply after the next refresh)"}
 	lines = append(lines, fmt.Sprintf("Averaging Window [%dm]", windowMinutes()))
 	for _, v := range allowedWindowMinutes {
 		lines = append(lines, optionLine(script, "set-window", v, windowMinutes()))
