@@ -100,8 +100,9 @@ func cacheFilePath(configDir string) string {
 }
 
 // fetchUsageCached serves cached data when fresh, backs off on 429, and falls
-// back to stale data rather than showing an error on transient failures.
-func fetchUsageCached(configDir, token string) (*Usage, error) {
+// back to stale data rather than showing an error on transient failures. The
+// returned float64 is the Unix-seconds time the data was actually fetched.
+func fetchUsageCached(configDir, token string) (*Usage, float64, error) {
 	path := cacheFilePath(configDir)
 	now := float64(time.Now().UnixNano()) / 1e9
 
@@ -111,13 +112,13 @@ func fetchUsageCached(configDir, token string) (*Usage, error) {
 	}
 
 	if cached.Usage != nil && now-cached.FetchedAt < cacheTTL.Seconds() {
-		return cached.Usage, nil
+		return cached.Usage, cached.FetchedAt, nil
 	}
 	if cached.BackoffUntil > 0 && now < cached.BackoffUntil {
 		if cached.Usage != nil {
-			return cached.Usage, nil
+			return cached.Usage, cached.FetchedAt, nil
 		}
-		return nil, fmt.Errorf("rate-limited — retrying later")
+		return nil, 0, fmt.Errorf("rate-limited — retrying later")
 	}
 
 	usage, fetchErr, retryAfter := fetchUsage(token)
@@ -152,7 +153,7 @@ func fetchUsageCached(configDir, token string) (*Usage, error) {
 
 	if usage != nil {
 		saveCache(cacheEntry{FetchedAt: now, Usage: usage})
-		return usage, nil
+		return usage, now, nil
 	}
 	if retryAfter > 0 {
 		cached.BackoffUntil = now + float64(retryAfter)
@@ -160,7 +161,7 @@ func fetchUsageCached(configDir, token string) (*Usage, error) {
 	}
 	if cached.Usage != nil {
 		// Stale data beats an error display on transient failures.
-		return cached.Usage, nil
+		return cached.Usage, cached.FetchedAt, nil
 	}
-	return nil, fetchErr
+	return nil, 0, fetchErr
 }

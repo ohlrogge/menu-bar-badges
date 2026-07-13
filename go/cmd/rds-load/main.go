@@ -6,6 +6,8 @@ import (
 	"os"
 	"sort"
 	"strconv"
+
+	"claude-quota/internal/badge"
 )
 
 // consoleURL builds a Performance Insights deep link. This path is a
@@ -91,16 +93,26 @@ func configLines() []string {
 	if err != nil {
 		script = os.Args[0]
 	}
-	lines := []string{"Settings — changes apply after the next refresh | font=Menlo"}
-	lines = append(lines, fmt.Sprintf("Averaging Window: %dm | font=Menlo", windowMinutes()))
+	lines := []string{"---", "Settings (Changes apply after the next refresh) | font=Menlo"}
+	lines = append(lines, fmt.Sprintf("Averaging Window [%dm]", windowMinutes()))
 	for _, v := range allowedWindowMinutes {
 		lines = append(lines, optionLine(script, "set-window", v, windowMinutes()))
 	}
-	lines = append(lines, fmt.Sprintf("Refresh: %dm | font=Menlo", refreshMinutes()))
+	lines = append(lines, fmt.Sprintf("Refresh Period [%dm]", refreshMinutes()))
 	for _, v := range allowedRefreshMinutes {
 		lines = append(lines, optionLine(script, "set-refresh", v, refreshMinutes()))
 	}
 	return lines
+}
+
+// refreshLine renders the "Refresh now" menu item, annotated with the last
+// fetch time when known.
+func refreshLine(fetchedAt float64) string {
+	label := "⟳ Refresh now"
+	if ts := badge.LastRefreshed(fetchedAt); ts != "" {
+		label = fmt.Sprintf("⟳ Refresh now (last updated %s)", ts)
+	}
+	return label + " | refresh=true"
 }
 
 func main() {
@@ -115,7 +127,7 @@ func main() {
 		}
 	}
 
-	data, err := fetchAllCached()
+	data, fetchedAt, err := fetchAllCached()
 
 	if err != nil {
 		if img, imgErr := menuBarImage(0, false, true); imgErr == nil {
@@ -134,11 +146,11 @@ func main() {
 		default:
 			fmt.Printf("⚠ %s\n", err)
 		}
-		fmt.Println("---")
-		fmt.Println("Refresh now | refresh=true")
 		for _, line := range configLines() {
 			fmt.Println(line)
 		}
+		fmt.Println("---")
+		fmt.Println(refreshLine(fetchedAt))
 		return
 	}
 
@@ -172,9 +184,9 @@ func main() {
 		}
 	}
 
-	fmt.Println("---")
-	fmt.Println("Refresh now | refresh=true")
 	for _, line := range configLines() {
 		fmt.Println(line)
 	}
+	fmt.Println("---")
+	fmt.Println(refreshLine(fetchedAt))
 }

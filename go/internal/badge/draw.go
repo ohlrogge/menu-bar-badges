@@ -84,3 +84,13 @@ func Countdown(iso string) string {
 	}
 	return fmt.Sprintf("%d:%02d", mins/60, mins%60)
 }
+
+// LastRefreshed formats a Unix-seconds timestamp as a short local clock time
+// (e.g. "14:32") for display next to a "Refresh now" menu item. Zero/negative
+// input yields "".
+func LastRefreshed(unixSeconds float64) string {
+	if unixSeconds <= 0 {
+		return ""
+	}
+	return time.Unix(int64(unixSeconds), 0).Local().Format("15:04")
+}

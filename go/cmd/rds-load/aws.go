@@ -355,8 +355,9 @@ func cacheFilePath() string {
 
 // fetchAllCached serves cached data when fresh, and falls back to stale data
 // rather than an error on transient failures. Auth/missing-CLI errors are
-// never masked by stale data, since they need user action.
-func fetchAllCached() (*Data, error) {
+// never masked by stale data, since they need user action. The returned
+// float64 is the Unix-seconds time the data was actually fetched.
+func fetchAllCached() (*Data, float64, error) {
 	path := cacheFilePath()
 	now := float64(time.Now().UnixNano()) / 1e9
 
@@ -365,22 +366,22 @@ func fetchAllCached() (*Data, error) {
 		json.Unmarshal(raw, &cached) //nolint:errcheck // stale cache is acceptable
 	}
 	if cached.Data != nil && now-cached.FetchedAt < cacheTTL().Seconds() {
-		return cached.Data, nil
+		return cached.Data, cached.FetchedAt, nil
 	}
 
 	data, err := fetchAll()
 	if err != nil {
 		if errors.Is(err, errNoAWSCli) || errors.Is(err, errNoAuth) {
-			return nil, err
+			return nil, 0, err
 		}
 		if cached.Data != nil {
-			return cached.Data, nil // stale beats a transient error
+			return cached.Data, cached.FetchedAt, nil // stale beats a transient error
 		}
-		return nil, err
+		return nil, 0, err
 	}
 
 	saveCache(path, cacheEntry{FetchedAt: now, Data: data})
-	return data, nil
+	return data, now, nil
 }
 
 func saveCache(path string, entry cacheEntry) {

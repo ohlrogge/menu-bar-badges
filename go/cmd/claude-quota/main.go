@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"claude-quota/internal/badge"
 )
 
 // padRight pads s to at least width Unicode code points using spaces.
@@ -84,21 +86,23 @@ func main() {
 	}
 
 	results := make([]result, 0, len(accounts))
+	var oldestFetchedAt float64
 	for _, acc := range accounts {
 		token, tokenErr := getToken(acc.ConfigDir)
 		var usage *Usage
 		var errMsg string
+		var fetchedAt float64
 		if tokenErr != nil {
 			errMsg = tokenErr.Error()
 		} else {
 			var fetchErr error
-			usage, fetchErr = fetchUsageCached(acc.ConfigDir, token)
+			usage, fetchedAt, fetchErr = fetchUsageCached(acc.ConfigDir, token)
 			if fetchErr != nil && isAuthError(fetchErr.Error()) {
 				// The keychain looked fine but the server rejected the token.
 				// Renew once in the background and retry before giving up.
 				renewToken(acc.ConfigDir)
 				if token, tokenErr = getToken(acc.ConfigDir); tokenErr == nil {
-					usage, fetchErr = fetchUsageCached(acc.ConfigDir, token)
+					usage, fetchedAt, fetchErr = fetchUsageCached(acc.ConfigDir, token)
 				} else {
 					fetchErr = tokenErr
 				}
@@ -106,6 +110,9 @@ func main() {
 			if fetchErr != nil {
 				errMsg = fetchErr.Error()
 			}
+		}
+		if fetchedAt > 0 && (oldestFetchedAt == 0 || fetchedAt < oldestFetchedAt) {
+			oldestFetchedAt = fetchedAt
 		}
 		results = append(results, result{acc.Label, usage, errMsg})
 	}
@@ -202,5 +209,9 @@ func main() {
 		}
 	}
 	fmt.Println("---")
-	fmt.Println("Refresh now | refresh=true")
+	refreshLabel := "⟳ Refresh now"
+	if ts := badge.LastRefreshed(oldestFetchedAt); ts != "" {
+		refreshLabel = fmt.Sprintf("⟳ Refresh now (last updated %s)", ts)
+	}
+	fmt.Println(refreshLabel + " | refresh=true")
 }

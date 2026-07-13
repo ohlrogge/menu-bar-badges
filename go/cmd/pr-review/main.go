@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"claude-quota/internal/badge"
 )
 
 // sanitize strips characters that would break a SwiftBar menu line (| separates
@@ -44,8 +46,18 @@ func prLine(pr PR, prefix string) string {
 	return fmt.Sprintf("%s | href=%s", label, pr.URL)
 }
 
+// refreshLine renders the "Refresh now" menu item, annotated with the last
+// fetch time when known.
+func refreshLine(fetchedAt float64) string {
+	label := "⟳ Refresh now"
+	if ts := badge.LastRefreshed(fetchedAt); ts != "" {
+		label = fmt.Sprintf("⟳ Refresh now (last updated %s)", ts)
+	}
+	return label + " | refresh=true"
+}
+
 func main() {
-	data, err := fetchGitHubCached()
+	data, fetchedAt, err := fetchGitHubCached()
 
 	if err != nil {
 		// Menu bar: error badge.
@@ -69,7 +81,7 @@ func main() {
 			fmt.Printf("⚠ %s\n", err)
 		}
 		fmt.Println("---")
-		fmt.Println("Refresh now | refresh=true")
+		fmt.Println(refreshLine(fetchedAt))
 		return
 	}
 
@@ -100,5 +112,5 @@ func main() {
 	}
 
 	fmt.Println("---")
-	fmt.Println("Refresh now | refresh=true")
+	fmt.Println(refreshLine(fetchedAt))
 }
