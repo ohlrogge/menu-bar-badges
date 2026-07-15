@@ -1,5 +1,6 @@
 # Go — ignore compiled binaries built in-tree
 go/claude-quota*
 go/pr-review*
+go/rds-load*
 
 .DS_Store

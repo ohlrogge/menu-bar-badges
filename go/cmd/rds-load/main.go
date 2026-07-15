@@ -10,12 +10,21 @@ import (
 	"claude-quota/internal/badge"
 )
 
-// consoleURL builds a Performance Insights deep link. This path is a
+// consoleURL builds a Database Insights (CloudWatch) deep link for the given
+// instance. AWS retired the Performance Insights console experience on July
+// 31, 2026 in favor of Database Insights in CloudWatch. This path is a
 // best-effort format seen in AWS console traffic, not officially documented —
-// if AWS changes it, the link just opens the RDS console instead of failing.
-func consoleURL(region, resourceID string) string {
-	return fmt.Sprintf("https://%s.console.aws.amazon.com/rds/home?region=%s#performance-insights-v20206:/resourceId/%s/dbtype/RDS",
-		region, region, resourceID)
+// if AWS changes it, the link just opens the CloudWatch console instead of
+// failing.
+func consoleURL(region, id, resourceID string) string {
+	return fmt.Sprintf("https://%s.console.aws.amazon.com/cloudwatch/home?region=%s#database-insights:instances"+
+		"?selectedInstanceName=%%22%s%%22"+
+		"&selectedInstanceResourceId=%%22%s%%22"+
+		"&regionFilterQuery=%%5B%%22%s%%22%%5D"+
+		"&filterQuery=%%7B%%22tokens%%22%%3A%%5B%%5D%%2C%%22operation%%22%%3A%%22or%%22%%7D"+
+		"&timeRange=%%7B%%22type%%22%%3A%%22relative%%22%%2C%%22value%%22%%3A%%22PT30M%%22%%7D"+
+		"&crossAccountMode=true&showInAlarm=true&showInOk=false&instanceSelectedTab=%%22dbLoadAnalysis%%22",
+		region, region, id, resourceID, region)
 }
 
 // loadLabel is a fixed-width bracketed prefix so the load value lines up
@@ -36,9 +45,9 @@ func dbLine(db DBInstance) string {
 		return fmt.Sprintf("%s  PI disabled | font=Menlo", label)
 	}
 	if db.Load == nil {
-		return fmt.Sprintf("%s  load unknown | font=Menlo href=%s", label, consoleURL(db.Region, db.ResourceID))
+		return fmt.Sprintf("%s  load unknown | font=Menlo href=%s", label, consoleURL(db.Region, db.Id, db.ResourceID))
 	}
-	return fmt.Sprintf("%s | font=Menlo href=%s", label, consoleURL(db.Region, db.ResourceID))
+	return fmt.Sprintf("%s | font=Menlo href=%s", label, consoleURL(db.Region, db.Id, db.ResourceID))
 }
 
 // byLoadDesc sorts instances by load descending, with unknown-load instances
