@@ -145,8 +145,9 @@ func main() {
 			// SwiftBar rejoins bash/paramN with plain spaces when launching Terminal
 			// (terminal=true), stripping quotes without re-adding them, so a quoted
 			// multi-word param3 falls apart into separate argv/positional-params by
-			// the time bash -l -c sees it. Escaping the spaces survives that rejoin.
-			fmt.Println(`Run 'aws sso login' in Terminal | bash=/bin/bash param1=-l param2=-c param3=aws\ sso\ login terminal=true`)
+			// the time bash -l -c sees it. Backslash-escaped spaces don't survive
+			// SwiftBar's own param parsing either; escaped double quotes do.
+			fmt.Println(`Run 'aws sso login' in Terminal | bash=/bin/bash param1=-l param2=-c param3=\"aws sso login\" terminal=true`)
 		default:
 			fmt.Printf("⚠ %s\n", err)
 		}
