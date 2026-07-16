@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -31,13 +32,68 @@ type ExtraUsage struct {
 	Currency     string  `json:"currency"`
 }
 
+// Limit is one entry in the top-level "limits" array. It supersedes the
+// deprecated per-model seven_day_* fields: per-model weekly windows now arrive
+// as kind=="weekly_scoped" entries carrying a scope.model.display_name.
+type Limit struct {
+	Kind     string  `json:"kind"`
+	Group    string  `json:"group"`
+	Percent  float64 `json:"percent"`
+	ResetsAt string  `json:"resets_at"`
+	IsActive bool    `json:"is_active"`
+	Scope    *struct {
+		Model *struct {
+			DisplayName string `json:"display_name"`
+		} `json:"model"`
+	} `json:"scope"`
+}
+
 // Usage holds the full API response.
 type Usage struct {
 	FiveHour       *Window     `json:"five_hour"`
 	SevenDay       *Window     `json:"seven_day"`
-	SevenDayOpus   *Window     `json:"seven_day_opus"`
-	SevenDaySonnet *Window     `json:"seven_day_sonnet"`
+	SevenDayOpus   *Window     `json:"seven_day_opus"`   // deprecated; now null
+	SevenDaySonnet *Window     `json:"seven_day_sonnet"` // deprecated; now null
+	Limits         []Limit     `json:"limits"`
 	ExtraUsage     *ExtraUsage `json:"extra_usage"`
+}
+
+// ScopedModel is a per-model weekly window ready for display.
+type ScopedModel struct {
+	Label    string
+	Percent  float64
+	ResetsAt string
+}
+
+// ScopedModels returns the per-model weekly windows, preferring the new
+// limits[] array and falling back to the deprecated seven_day_* fields.
+func (u *Usage) ScopedModels() []ScopedModel {
+	var out []ScopedModel
+	for _, l := range u.Limits {
+		if l.Kind != "weekly_scoped" || l.Scope == nil || l.Scope.Model == nil {
+			continue
+		}
+		name := strings.TrimSpace(l.Scope.Model.DisplayName)
+		if name == "" {
+			continue
+		}
+		out = append(out, ScopedModel{
+			Label:    strings.ToLower(name),
+			Percent:  l.Percent,
+			ResetsAt: l.ResetsAt,
+		})
+	}
+	if len(out) > 0 {
+		return out
+	}
+	// Fallback for older API responses that still populate the per-model fields.
+	if u.SevenDayOpus != nil {
+		out = append(out, ScopedModel{"opus", u.SevenDayOpus.Utilization, u.SevenDayOpus.ResetsAt})
+	}
+	if u.SevenDaySonnet != nil {
+		out = append(out, ScopedModel{"sonnet", u.SevenDaySonnet.Utilization, u.SevenDaySonnet.ResetsAt})
+	}
+	return out
 }
 
 type cacheEntry struct {

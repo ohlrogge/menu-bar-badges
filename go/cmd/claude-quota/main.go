@@ -43,12 +43,15 @@ func resetStr(iso string) string {
 }
 
 func windowLine(label string, w *Window) string {
-	u := w.Utilization
+	return windowLineFields(label, w.Utilization, w.ResetsAt)
+}
+
+func windowLineFields(label string, u float64, resetsAt string) string {
 	return fmt.Sprintf("%s %s %3.0f%%  %s | font=Menlo",
 		padRight(label, 7),
 		padRight(meter(u), 10),
 		u,
-		resetStr(w.ResetsAt),
+		resetStr(resetsAt),
 	)
 }
 
@@ -194,11 +197,8 @@ func main() {
 		if u.SevenDay != nil {
 			fmt.Println(windowLine("week", u.SevenDay))
 		}
-		if u.SevenDayOpus != nil {
-			fmt.Println(windowLine("opus", u.SevenDayOpus))
-		}
-		if u.SevenDaySonnet != nil {
-			fmt.Println(windowLine("sonnet", u.SevenDaySonnet))
+		for _, sm := range u.ScopedModels() {
+			fmt.Println(windowLineFields(sm.Label, sm.Percent, sm.ResetsAt))
 		}
 		if u.ExtraUsage != nil && u.ExtraUsage.IsEnabled && u.ExtraUsage.UsedCredits > 0 {
 			fmt.Printf("extra   %.2f / %.0f %s | font=Menlo\n",
