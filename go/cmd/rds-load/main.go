@@ -151,12 +151,16 @@ func main() {
 			fmt.Println("Install: brew install awscli | href=https://aws.amazon.com/cli/")
 		case errors.Is(err, errNoAuth):
 			fmt.Println("Not signed in to AWS")
-			// SwiftBar rejoins bash/paramN with plain spaces when launching Terminal
-			// (terminal=true), stripping quotes without re-adding them, so a quoted
-			// multi-word param3 falls apart into separate argv/positional-params by
-			// the time bash -l -c sees it. Backslash-escaped spaces don't survive
-			// SwiftBar's own param parsing either; escaped double quotes do.
-			fmt.Println(`Run 'aws sso login' in Terminal | bash=/bin/bash param1=-l param2=-c param3=\"aws sso login\" terminal=true`)
+			// bash=/bin/bash -c "aws sso login" doesn't survive SwiftBar's terminal=true
+			// relaunch: it rejoins bash/paramN with plain spaces, so a quoted multi-word
+			// param3 falls apart into separate argv/positional-params by the time bash -l
+			// -c sees it, and Terminal is left stuck on an unterminated quote. Invoking the
+			// aws binary directly with one arg per param sidesteps quoting entirely.
+			if aws, awsErr := awsPath(); awsErr == nil {
+				fmt.Printf("Run 'aws sso login' in Terminal | bash=%s param1=sso param2=login terminal=true\n", aws)
+			} else {
+				fmt.Println("Run 'aws sso login' in Terminal")
+			}
 		default:
 			fmt.Printf("⚠ %s\n", err)
 		}
