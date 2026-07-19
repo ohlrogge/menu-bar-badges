@@ -132,6 +132,12 @@ func fetchUsage(token string) (*Usage, error, int) {
 		if ra := resp.Header.Get("Retry-After"); ra != "" {
 			fmt.Sscanf(ra, "%d", &retryAfter) //nolint:errcheck
 		}
+		// Cap the backoff: a single 429 shouldn't be able to freeze the widget
+		// for hours if the server sends an unexpectedly large Retry-After.
+		const maxRetryAfter = 15 * 60
+		if retryAfter > maxRetryAfter {
+			retryAfter = maxRetryAfter
+		}
 		return nil, fmt.Errorf("rate-limited"), retryAfter
 	default:
 		return nil, fmt.Errorf("API error %d", resp.StatusCode), 0
