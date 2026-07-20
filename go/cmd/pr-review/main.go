@@ -3,9 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"claude-quota/internal/badge"
+	"claude-quota/internal/updatecheck"
 )
 
 // sanitize strips characters that would break a SwiftBar menu line (| separates
@@ -57,6 +59,16 @@ func refreshLine(fetchedAt float64) string {
 }
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == updatecheck.SelfUpdateArg {
+		updatecheck.RunSelfUpdate()
+		return
+	}
+
+	script, err := os.Executable()
+	if err != nil {
+		script = os.Args[0]
+	}
+
 	data, fetchedAt, err := fetchGitHubCached()
 
 	if err != nil {
@@ -91,6 +103,9 @@ func main() {
 		}
 		fmt.Println("---")
 		fmt.Println(refreshLine(fetchedAt))
+		if line := updatecheck.MenuLine(script); line != "" {
+			fmt.Println(line)
+		}
 		return
 	}
 
@@ -122,4 +137,7 @@ func main() {
 
 	fmt.Println("---")
 	fmt.Println(refreshLine(fetchedAt))
+	if line := updatecheck.MenuLine(script); line != "" {
+		fmt.Println(line)
+	}
 }

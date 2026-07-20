@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"claude-quota/internal/badge"
+	"claude-quota/internal/updatecheck"
 )
 
 // consoleURL builds a Database Insights (CloudWatch) deep link for the given
@@ -135,8 +136,17 @@ func main() {
 			return
 		}
 	}
+	if len(os.Args) >= 2 && os.Args[1] == updatecheck.SelfUpdateArg {
+		updatecheck.RunSelfUpdate()
+		return
+	}
 
 	data, fetchedAt, err := fetchAllCached()
+
+	script, execErr := os.Executable()
+	if execErr != nil {
+		script = os.Args[0]
+	}
 
 	if err != nil {
 		if img, imgErr := menuBarImage(0, false, true); imgErr == nil {
@@ -169,6 +179,9 @@ func main() {
 		}
 		fmt.Println("---")
 		fmt.Println(refreshLine(fetchedAt))
+		if line := updatecheck.MenuLine(script); line != "" {
+			fmt.Println(line)
+		}
 		return
 	}
 
@@ -207,4 +220,7 @@ func main() {
 	}
 	fmt.Println("---")
 	fmt.Println(refreshLine(fetchedAt))
+	if line := updatecheck.MenuLine(script); line != "" {
+		fmt.Println(line)
+	}
 }

@@ -15,6 +15,30 @@ if [ "$(uname)" != "Darwin" ]; then
     exit 1
 fi
 
+# ---- resolve plugin dir & detect existing installs ------------------------
+# Resolved early (moved up from its original spot further down) so the plugin
+# picker below can default to whatever's already installed.
+PLUGIN_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
+if [ -z "$PLUGIN_DIR" ]; then
+    PLUGIN_DIR="$HOME/.swiftbar"
+    defaults write com.ameba.SwiftBar PluginDirectory -string "$PLUGIN_DIR"
+fi
+mkdir -p "$PLUGIN_DIR"
+
+detect_installed() {
+    for f in "$PLUGIN_DIR/$1".*; do
+        [ -e "$f" ] && return 0
+    done
+    return 1
+}
+ALREADY_CLAUDE=false; detect_installed claude-quota && ALREADY_CLAUDE=true
+ALREADY_GH=false;     detect_installed pr-review    && ALREADY_GH=true
+ALREADY_RDS=false;    detect_installed rds-load     && ALREADY_RDS=true
+ANY_INSTALLED=false
+if [ "$ALREADY_CLAUDE" = true ] || [ "$ALREADY_GH" = true ] || [ "$ALREADY_RDS" = true ]; then
+    ANY_INSTALLED=true
+fi
+
 # ---- choose plugins -------------------------------------------------------
 INSTALL_CLAUDE=false
 INSTALL_GH=false
@@ -36,23 +60,44 @@ if [ -n "${PLUGINS:-}" ]; then
 fi
 
 if [ "$INSTALL_CLAUDE" = false ] && [ "$INSTALL_GH" = false ] && [ "$INSTALL_RDS" = false ]; then
-    if [ -e /dev/tty ]; then
-        echo "Which plugins do you want to install?"
-        echo "  1) claude-quota  — Claude Code usage gauges"
-        echo "  2) pr-review     — GitHub PRs awaiting your review"
-        echo "  3) rds-load      — Amazon RDS DB Load"
-        echo "  4) all (default)"
-        printf "Choice [4]: "
-        read -r choice </dev/tty
-        case "$choice" in
-            1) INSTALL_CLAUDE=true ;;
-            2) INSTALL_GH=true ;;
-            3) INSTALL_RDS=true ;;
-            *) INSTALL_CLAUDE=true; INSTALL_GH=true; INSTALL_RDS=true ;;
+    # Default list reflects what's already installed, so re-running the
+    # installer (e.g. via the "Update available" menu item) reinstalls only
+    # what's there instead of silently adding plugins the user never chose.
+    # A fresh machine with nothing installed still defaults to "all".
+    default_list=""
+    [ "$ALREADY_CLAUDE" = true ] && default_list="${default_list}1,"
+    [ "$ALREADY_GH" = true ] && default_list="${default_list}2,"
+    [ "$ALREADY_RDS" = true ] && default_list="${default_list}3,"
+    default_list="${default_list%,}"
+    if [ -z "$default_list" ]; then
+        default_list="1,2,3"
+    fi
+
+    apply_choice() {
+        case ",$1," in
+            *,all,*) INSTALL_CLAUDE=true; INSTALL_GH=true; INSTALL_RDS=true; return ;;
         esac
+        case ",$1," in *,1,*) INSTALL_CLAUDE=true ;; esac
+        case ",$1," in *,2,*) INSTALL_GH=true ;; esac
+        case ",$1," in *,3,*) INSTALL_RDS=true ;; esac
+    }
+
+    if [ -e /dev/tty ]; then
+        echo "Which plugins do you want to install/update?"
+        echo "  1) claude-quota  — Claude Code usage gauges$( [ "$ALREADY_CLAUDE" = true ] && echo ' (installed)')"
+        echo "  2) pr-review     — GitHub PRs awaiting your review$( [ "$ALREADY_GH" = true ] && echo ' (installed)')"
+        echo "  3) rds-load      — Amazon RDS DB Load$( [ "$ALREADY_RDS" = true ] && echo ' (installed)')"
+        printf "Choice (comma-separated, or 'all') [%s]: " "$default_list"
+        read -r choice </dev/tty
+        choice="${choice:-$default_list}"
+        apply_choice "$choice"
     else
-        echo "No selection given; installing all (use PLUGINS=claude, PLUGINS=gh, or PLUGINS=rds to choose)."
-        INSTALL_CLAUDE=true; INSTALL_GH=true; INSTALL_RDS=true
+        if [ "$ANY_INSTALLED" = true ]; then
+            echo "No selection given; reinstalling currently installed plugins ($default_list) (use PLUGINS=claude, PLUGINS=gh, or PLUGINS=rds to change)."
+        else
+            echo "No selection given; installing all (use PLUGINS=claude, PLUGINS=gh, or PLUGINS=rds to choose)."
+        fi
+        apply_choice "$default_list"
     fi
 fi
 
@@ -148,13 +193,6 @@ if [ "$INSTALL_RDS" = true ]; then
     fi
 fi
 
-PLUGIN_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
-if [ -z "$PLUGIN_DIR" ]; then
-    PLUGIN_DIR="$HOME/.swiftbar"
-    defaults write com.ameba.SwiftBar PluginDirectory -string "$PLUGIN_DIR"
-fi
-mkdir -p "$PLUGIN_DIR"
-
 # ---- resolve source -------------------------------------------------------
 # Resolve the directory containing this script (works for both local checkout
 # and curl | bash, where BASH_SOURCE[0] is empty and $0 is just "bash").
@@ -176,6 +214,12 @@ else
     BUILD_DIR="$CLONE_DIR/go"
 fi
 
+# Commit the binaries are built from, embedded so each plugin can check daily
+# whether origin/main has moved past it (see internal/updatecheck). Works for
+# both branches above since BUILD_DIR is always <repo root>/go.
+REPO_ROOT="$(dirname "$BUILD_DIR")"
+REPO_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+
 # ---- build ----------------------------------------------------------------
 # Tell SwiftBar to exec the binary directly instead of wrapping it in
 # "bash -l -c", which adds an unnecessary shell process on every refresh.
@@ -193,7 +237,7 @@ build_plugin() {
     for stale in "$PLUGIN_DIR/$pkg".*.cgo; do
         [ -e "$stale" ] && [ "$stale" != "$binary" ] && rm -f "$stale"
     done
-    (cd "$BUILD_DIR" && go build -o "$binary" "./cmd/$pkg")
+    (cd "$BUILD_DIR" && go build -ldflags "-X claude-quota/internal/updatecheck.BuiltSHA=$REPO_SHA" -o "$binary" "./cmd/$pkg")
     chmod +x "$binary"
     xattr -w "com.ameba.SwiftBar" "$(printf '%s%s' "$RUN_IN_BASH_TAG" "$extra_meta" | base64)" "$binary" 2>/dev/null || true
     echo "Installed $binary"

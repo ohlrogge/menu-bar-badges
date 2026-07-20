@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"claude-quota/internal/badge"
+	"claude-quota/internal/updatecheck"
 )
 
 // padRight pads s to at least width Unicode code points using spaces.
@@ -69,6 +70,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "toggle-hidden: %v\n", err)
 			os.Exit(1)
 		}
+		return
+	}
+
+	// Sub-command: SwiftBar relaunches us in Terminal with this to self-update.
+	if len(os.Args) >= 2 && os.Args[1] == updatecheck.SelfUpdateArg {
+		updatecheck.RunSelfUpdate()
 		return
 	}
 
@@ -214,4 +221,7 @@ func main() {
 		refreshLabel = fmt.Sprintf("⟳ Refresh now (last updated %s)", ts)
 	}
 	fmt.Println(refreshLabel + " | refresh=true")
+	if line := updatecheck.MenuLine(script); line != "" {
+		fmt.Println(line)
+	}
 }

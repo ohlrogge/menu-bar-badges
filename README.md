@@ -73,6 +73,12 @@ cd menu-bar-badges
 
 Both install paths set up [SwiftBar](https://github.com/swiftbar/SwiftBar) via Homebrew if it is not already installed, and add it to Login Items so the badges come back after a reboot.
 
+## Updating
+
+Each plugin checks once a day whether `origin/main` has moved past the commit it was built from, and shows an **⬆ Update available** entry at the bottom of its dropdown when it has. Clicking it opens Terminal and re-runs the installer.
+
+You can also just re-run the installer yourself at any time — from a checkout (`git pull && ./install.sh`) or via the `curl | bash` one-liner above. With no `--claude`/`--gh`/`--rds` flags and no `PLUGINS` set, it now defaults to reinstalling whatever's already on your machine (you can still type a different choice at the prompt), rather than always installing all three.
+
 ## How claude-quota works
 
 The plugin reads your Claude Code OAuth token from the macOS Keychain (**read-only** — it never refreshes or rewrites tokens, so it cannot log you out) and queries the same usage endpoint that Claude Code's `/usage` screen uses. No passwords, no scraping, no third-party services.
