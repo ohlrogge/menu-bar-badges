@@ -159,6 +159,11 @@ func MenuLine(script string) string {
 // RunSelfUpdate downloads and runs install.sh. Called from main() when
 // os.Args[1] == SelfUpdateArg (dispatched via a Terminal window opened by
 // SwiftBar's terminal=true), so its output is visible to the user live.
+// Clears the update-check cache afterward: install.sh rebuilds this binary
+// with a fresh BuiltSHA, but the cached LatestSHA from the last periodic
+// check can already be stale by then (e.g. a newer commit landed after that
+// check ran), which would otherwise keep "Update available" showing even
+// though the rebuilt binary is fully current.
 func RunSelfUpdate() {
 	script := fmt.Sprintf("curl -fsSL %s -o /tmp/menu-bar-badges-install.sh && bash /tmp/menu-bar-badges-install.sh", installerURL)
 	cmd := exec.Command("/bin/bash", "-c", script)
@@ -166,4 +171,12 @@ func RunSelfUpdate() {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	_ = cmd.Run()
+	invalidateCache()
+}
+
+// invalidateCache drops the cached comparison state so the next Available()
+// call re-fetches origin/main's SHA instead of trusting a snapshot that may
+// predate the rebuild.
+func invalidateCache() {
+	os.Remove(cacheFilePath()) //nolint:errcheck // best-effort; a missing cache just forces one fresh check
 }

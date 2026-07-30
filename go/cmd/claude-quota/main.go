@@ -75,7 +75,7 @@ func main() {
 		fmt.Println("◔ ? | color=orange")
 		fmt.Println("---")
 		fmt.Println("No Claude accounts found")
-		fmt.Println("--Run 'claude' to log in | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
+		fmt.Println("Run 'claude' to log in | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
 		fmt.Println("Or pin accounts manually in ~/.config/claude-quota/accounts")
 		return
 	}
@@ -160,7 +160,7 @@ func main() {
 			if isAuthError(r.err) {
 				// Background renewal already failed (dead refresh token), so offer
 				// a one-click fix: open Terminal and run the claude CLI to log in.
-				fmt.Println("--Run 'claude' in Terminal | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
+				fmt.Println("Run 'claude' in Terminal | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
 			}
 			continue
 		}
