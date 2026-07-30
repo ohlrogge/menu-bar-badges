@@ -150,8 +150,6 @@ To pin or rename accounts, create `~/.config/claude-quota/accounts` with one `pa
 ~/.claude-priv Priv
 ```
 
-To hide an account's menu bar gauge (its dropdown detail stays), use **Hide from menu bar** in the dropdown — or edit `~/.config/claude-quota/hidden` (one label per line).
-
 Multiple accounts via `CLAUDE_CONFIG_DIR` look like this in your shell rc:
 
 ```sh

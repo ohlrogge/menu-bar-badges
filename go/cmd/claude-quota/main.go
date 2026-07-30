@@ -64,15 +64,6 @@ func isAuthError(msg string) bool {
 }
 
 func main() {
-	// Sub-command: SwiftBar calls us back with this to toggle gauge visibility.
-	if len(os.Args) >= 3 && os.Args[1] == "toggle-hidden" {
-		if err := toggleHidden(os.Args[2]); err != nil {
-			fmt.Fprintf(os.Stderr, "toggle-hidden: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
 	// Sub-command: SwiftBar relaunches us in Terminal with this to self-update.
 	if len(os.Args) >= 2 && os.Args[1] == updatecheck.SelfUpdateArg {
 		updatecheck.RunSelfUpdate()
@@ -127,22 +118,18 @@ func main() {
 		results = append(results, result{acc.Label, usage, errMsg})
 	}
 
-	hidden, _ := loadHidden()
-
-	var visible []BarResult
+	bars := make([]BarResult, 0, len(results))
 	for _, r := range results {
-		if !hidden[r.label] {
-			visible = append(visible, BarResult{r.label, r.usage, r.err != ""})
-		}
+		bars = append(bars, BarResult{r.label, r.usage, r.err != ""})
 	}
 
-	imgB64, imgErr := menuBarImage(visible, len(results) > 1)
+	imgB64, imgErr := menuBarImage(bars, len(results) > 1)
 	if imgErr == nil {
 		fmt.Printf("| image=%s\n", imgB64)
 	} else {
 		// Plain-text fallback if rendering breaks.
 		var parts []string
-		for _, r := range visible {
+		for _, r := range bars {
 			first := "?"
 			if runes := []rune(r.Name); len(runes) > 0 {
 				first = string(runes[:1])
@@ -166,33 +153,18 @@ func main() {
 		script = os.Args[0]
 	}
 
-	toggleLine := func(name string) string {
-		verb := "Hide from menu bar"
-		if hidden[name] {
-			verb = "Show in menu bar"
-		}
-		return fmt.Sprintf("--%s | bash=%s param1=toggle-hidden param2=%s terminal=false refresh=true",
-			verb, script, name)
-	}
-
 	for _, r := range results {
 		fmt.Println("---")
 		if r.err != "" {
 			fmt.Printf("%s: ⚠ %s\n", r.label, r.err)
-			fmt.Println(toggleLine(r.label))
 			if isAuthError(r.err) {
 				// Background renewal already failed (dead refresh token), so offer
 				// a one-click fix: open Terminal and run the claude CLI to log in.
-				fmt.Println("--Re-authenticate (auto-renew failed): run 'claude' in Terminal | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
+				fmt.Println("--Run 'claude' in Terminal | bash=/bin/bash param1=-l param2=-c param3=claude terminal=true")
 			}
 			continue
 		}
-		if hidden[r.label] {
-			fmt.Printf("%s (hidden)\n", r.label)
-		} else {
-			fmt.Println(r.label)
-		}
-		fmt.Println(toggleLine(r.label))
+		fmt.Println(r.label)
 
 		u := r.usage
 		if u == nil {

@@ -10,9 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -172,9 +170,9 @@ func readKeychainToken(configDir string) (token string, expiresAt float64, err e
 // Avoids launching a login shell (which triggers macOS TCC privacy prompts for
 // every directory the shell touches on startup).
 var claudeCandidates = []string{
-	"~/.claude/local/claude",  // official Claude Code installer
+	"~/.claude/local/claude",   // official Claude Code installer
 	"/opt/homebrew/bin/claude", // Homebrew on Apple Silicon
-	"/usr/local/bin/claude",   // Homebrew on Intel / manual installs
+	"/usr/local/bin/claude",    // Homebrew on Intel / manual installs
 	"/usr/bin/claude",
 }
 
@@ -235,83 +233,4 @@ func getToken(configDir string) (string, error) {
 		return "", fmt.Errorf("token stale — run that CLI once to refresh")
 	}
 	return token, nil
-}
-
-// ---- hidden-accounts list ----
-
-func hiddenFilePath() string {
-	return expandUser("~/.config/claude-quota/hidden")
-}
-
-func loadHidden() (map[string]bool, error) {
-	f, err := os.Open(hiddenFilePath())
-	if os.IsNotExist(err) {
-		return map[string]bool{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	hidden := make(map[string]bool)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			hidden[line] = true
-		}
-	}
-	return hidden, scanner.Err()
-}
-
-// toggleHidden adds or removes label from the hidden list.
-// Uses an exclusive flock to prevent races when SwiftBar runs concurrently.
-func toggleHidden(label string) error {
-	path := hiddenFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("flock: %w", err)
-	}
-
-	hidden := make(map[string]bool)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			hidden[line] = true
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-
-	if hidden[label] {
-		delete(hidden, label)
-	} else {
-		hidden[label] = true
-	}
-
-	names := make([]string, 0, len(hidden))
-	for name := range hidden {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if err := f.Truncate(0); err != nil {
-		return err
-	}
-	w := bufio.NewWriter(f)
-	for _, name := range names {
-		fmt.Fprintln(w, name)
-	}
-	return w.Flush()
 }
