@@ -20,9 +20,16 @@ const (
 	numZone   = 34 // right zone for the count / !
 )
 
-// countColor escalates with how many reviews are waiting on you.
-func countColor(n int) color.NRGBA {
+// countColor escalates with how many reviews are waiting on you, unless one
+// of the user's own PRs has been approved or has changes requested — those
+// states are more actionable and take priority over the count-based
+// escalation. changesRequested wins over approved when both are present.
+func countColor(n int, changesRequested, approved bool) color.NRGBA {
 	switch {
+	case changesRequested:
+		return badge.ColorRed
+	case approved:
+		return badge.ColorGreen
 	case n == 0:
 		return badge.ColorGray
 	case n >= 5:
@@ -35,8 +42,9 @@ func countColor(n int) color.NRGBA {
 }
 
 // menuBarImage renders a single badge: an R glyph on the left and the
-// review-requested count (or ! on error) on the right.
-func menuBarImage(count int, hasErr bool) (string, error) {
+// combined count (review-requested plus own PRs approved/changes-requested,
+// or ! on error) on the right.
+func menuBarImage(count int, changesRequested, approved, hasErr bool) (string, error) {
 	const (
 		height = 32
 		badgeY = (height - badgeH) / 2
@@ -44,7 +52,7 @@ func menuBarImage(count int, hasErr bool) (string, error) {
 
 	img := image.NewNRGBA(image.Rect(0, 0, badgeW, height))
 
-	bg := countColor(count)
+	bg := countColor(count, changesRequested, approved)
 	if hasErr {
 		bg = badge.ColorErrOutline
 	}

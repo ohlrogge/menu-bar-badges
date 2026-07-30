@@ -73,7 +73,7 @@ func main() {
 
 	if err != nil {
 		// Menu bar: error badge.
-		if img, imgErr := menuBarImage(0, true); imgErr == nil {
+		if img, imgErr := menuBarImage(0, false, false, true); imgErr == nil {
 			fmt.Printf("| image=%s\n", img)
 		} else {
 			fmt.Println("PR ⚠")
@@ -109,9 +109,18 @@ func main() {
 		return
 	}
 
-	count := len(data.ReviewRequested)
+	ownApproved, ownChanges := 0, 0
+	for _, pr := range data.Mine {
+		switch pr.ReviewDecision {
+		case "APPROVED":
+			ownApproved++
+		case "CHANGES_REQUESTED":
+			ownChanges++
+		}
+	}
+	count := len(data.ReviewRequested) + ownApproved + ownChanges
 
-	if img, imgErr := menuBarImage(count, false); imgErr == nil {
+	if img, imgErr := menuBarImage(count, ownChanges > 0, ownApproved > 0, false); imgErr == nil {
 		fmt.Printf("| image=%s\n", img)
 	} else {
 		fmt.Printf("PR %d\n", count)
