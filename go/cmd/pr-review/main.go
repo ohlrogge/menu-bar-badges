@@ -25,9 +25,6 @@ func sanitize(s string) string {
 
 // statusMarker summarizes one of the user's own PRs.
 func statusMarker(pr PR) string {
-	if pr.IsDraft {
-		return "✎ draft"
-	}
 	switch pr.ReviewDecision {
 	case "APPROVED":
 		return "✓ approved"
@@ -41,10 +38,10 @@ func statusMarker(pr PR) string {
 }
 
 func prLine(pr PR, prefix string) string {
-	label := fmt.Sprintf("%s%s #%d %s", prefix, pr.Repository.NameWithOwner, pr.Number, sanitize(pr.Title))
-	if pr.IsDraft && prefix == "" {
-		label += " [draft]"
+	if pr.IsDraft {
+		prefix = "✎ draft  " + prefix
 	}
+	label := fmt.Sprintf("%s%s #%d %s", prefix, pr.Repository.NameWithOwner, pr.Number, sanitize(pr.Title))
 	return fmt.Sprintf("%s | href=%s", label, pr.URL)
 }
 
@@ -128,8 +125,8 @@ func main() {
 
 	// Section 1: PRs awaiting my review.
 	fmt.Println("---")
-	fmt.Printf("Review requested (%d)\n", count)
-	if count == 0 {
+	fmt.Printf("Review requested (%d)\n", len(data.ReviewRequested))
+	if len(data.ReviewRequested) == 0 {
 		fmt.Println("No reviews requested 🎉")
 	} else {
 		for _, pr := range data.ReviewRequested {

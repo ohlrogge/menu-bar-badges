@@ -100,6 +100,7 @@ func ghPath() (string, error) {
 // JSON does not expose it across repositories.
 const graphqlQuery = `
 {
+  viewer { login }
   reviewRequested: search(query: "is:open is:pr review-requested:@me archived:false", type: ISSUE, first: 40) {
     nodes {
       ... on PullRequest {
@@ -122,6 +123,9 @@ const graphqlQuery = `
 
 type graphqlResp struct {
 	Data struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		ReviewRequested struct {
 			Nodes []PR `json:"nodes"`
 		} `json:"reviewRequested"`
@@ -129,20 +133,6 @@ type graphqlResp struct {
 			Nodes []PR `json:"nodes"`
 		} `json:"mine"`
 	} `json:"data"`
-}
-
-// currentLogin returns the authenticated user's login, used to drop self-authored
-// PRs from the review-requested list (you can't review your own PR).
-func currentLogin(gh string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, gh, "api", "user", "-q", ".login")
-	cmd.Dir = os.TempDir()
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // fetchGitHub runs the GraphQL query and returns the parsed PR lists.
@@ -198,7 +188,7 @@ func fetchGitHub() (*Data, error) {
 	}
 
 	if me == "" {
-		me = currentLogin(gh)
+		me = resp.Data.Viewer.Login
 	}
 	data := &Data{
 		ReviewRequested: filterOutAuthor(resp.Data.ReviewRequested.Nodes, me),
