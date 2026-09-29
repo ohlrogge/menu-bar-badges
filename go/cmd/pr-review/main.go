@@ -23,18 +23,23 @@ func sanitize(s string) string {
 	return s
 }
 
-// statusMarker summarizes one of the user's own PRs.
+// statusMarker summarizes one of the user's own PRs. Drafts only show the
+// review decisions that count toward the badge; GitHub reports REVIEW_REQUIRED
+// for every draft, which is noise.
 func statusMarker(pr PR) string {
 	switch pr.ReviewDecision {
 	case "APPROVED":
-		return "✓ approved"
+		return "✓ approved  "
 	case "CHANGES_REQUESTED":
-		return "✗ changes"
-	case "REVIEW_REQUIRED":
-		return "○ review needed"
-	default:
-		return "· open"
+		return "✗ changes  "
 	}
+	if pr.IsDraft {
+		return ""
+	}
+	if pr.ReviewDecision == "REVIEW_REQUIRED" {
+		return "○ review needed  "
+	}
+	return "· open  "
 }
 
 func prLine(pr PR, prefix string) string {
@@ -138,7 +143,7 @@ func main() {
 	fmt.Println("---")
 	fmt.Printf("My open PRs (%d)\n", len(data.Mine))
 	for _, pr := range data.Mine {
-		fmt.Println(prLine(pr, statusMarker(pr)+"  "))
+		fmt.Println(prLine(pr, statusMarker(pr)))
 	}
 
 	fmt.Println("---")
